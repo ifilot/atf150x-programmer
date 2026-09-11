@@ -1,0 +1,5 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "arduino") (type "Legacy") (uri "${KIPRJMOD}/Components/arduino.lib") (options "") (descr ""))
+	(lib (name "nebo") (type "KiCad") (uri "${KIPRJMOD}/Components/nebo.kicad_sym") (options "") (descr ""))
+)
