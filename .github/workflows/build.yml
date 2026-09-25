@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 ATF1502 programmer contributors
+name: Software builds
+on: [push, pull_request]
+jobs:
+  host:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release --parallel
+      - run: ctest --test-dir build -C Release --output-on-failure
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - run: arduino-cli core update-index
+      - run: arduino-cli core install arduino:avr@1.8.8
+      - run: arduino-cli compile --fqbn arduino:avr:leonardo firmware/atf1502_programmer
+  style:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - run: cmake -S . -B build -DBUILD_TESTING=OFF
+      - run: cmake --build build --target format-check

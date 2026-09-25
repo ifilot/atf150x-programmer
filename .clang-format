@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 ATF1502 programmer contributors
+BasedOnStyle: Google
+InsertBraces: true
