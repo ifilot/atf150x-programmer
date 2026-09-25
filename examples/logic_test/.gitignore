@@ -5,6 +5,7 @@
 *.fit
 *.io
 *.lst
+*.log
 *.mx
 *.pin
 *.pla
