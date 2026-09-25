@@ -1,7 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ATF1502 programmer contributors
 cmake_minimum_required(VERSION 3.16)
-project(atf1502_programmer VERSION 0.1.0 LANGUAGES CXX)
+file(READ
+  "${CMAKE_CURRENT_SOURCE_DIR}/firmware/atf1502_programmer/version.h"
+  ATF_VERSION_HEADER)
+string(REGEX MATCH
+  "kVersion\\[\\][^=]*=[ \t]*\"([0-9]+\\.[0-9]+\\.[0-9]+)\""
+  ATF_VERSION_MATCH "${ATF_VERSION_HEADER}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "Could not read semantic version from version.h")
+endif()
+set(ATF_PROJECT_VERSION "${CMAKE_MATCH_1}")
+project(atf1502_programmer VERSION ${ATF_PROJECT_VERSION} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,7 +19,8 @@ add_library(atf_jedec cli/src/jedec.cc)
 target_include_directories(atf_jedec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(atfprog cli/src/main.cc cli/src/serial.cc)
 target_link_libraries(atfprog PRIVATE atf_jedec)
-if(MINGW)
+option(ATF_STATIC_RUNTIME "Statically link the atfprog runtime libraries" OFF)
+if(MINGW OR ATF_STATIC_RUNTIME)
   target_link_options(atfprog PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
 if(MSVC)
@@ -22,6 +33,9 @@ endif()
 install(TARGETS atfprog RUNTIME DESTINATION bin)
 include(CTest)
 if(BUILD_TESTING)
+  add_test(NAME cli_version COMMAND atfprog --version)
+  set_tests_properties(cli_version PROPERTIES
+    PASS_REGULAR_EXPRESSION "^atfprog v${PROJECT_VERSION}")
   add_executable(atf_tests tests/core_test.cc)
   target_link_libraries(atf_tests PRIVATE atf_jedec)
   add_test(NAME core COMMAND atf_tests)

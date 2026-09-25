@@ -31,7 +31,7 @@ Unused high bits in the last byte must be zero: an erased 86-bit word is ten
 
 | Command | Payload after `OK` | Behavior |
 | --- | --- | --- |
-| `HELLO` | `ATF1502 1` | Reset session and report protocol version |
+| `HELLO` | `ATF1502 1 v0.1.0` | Reset session and report protocol and firmware versions |
 | `ID` | eight hexadecimal digits | Reset TAP, read IDCODE, release pins |
 | `BEGIN` | none | Check exact IDCODE, enter programming mode |
 | `ERASE` | none | Erase; requires active session |

@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ATF1502 programmer contributors
 BasedOnStyle: Google
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+UseTab: Never
 InsertBraces: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false

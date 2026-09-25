@@ -16,9 +16,18 @@ import threading
 exe = sys.argv[1]
 widths = {**{r: 86 for r in range(108)}, **{r: 86 for r in range(128, 229)}, 256: 32, 512: 4, 768: 16}
 
+## @brief Builds the erased physical-word image used by the PTY model.
+# @return Mapping of row addresses to uppercase little-endian hex byte strings.
 def blank():
     return {r: ((1 << n)-1).to_bytes((n+7)//8, 'little').hex().upper() for r, n in widths.items()}
 
+## @brief Runs the real CLI against an isolated simulated serial programmer.
+# @param action CLI operation: flash, verify or erase.
+# @param jed Path to the JEDEC fixture; unused for erase.
+# @param fault Optional ID, CRC, sequence, blank-check or verify fault selector.
+# @return Tuple of process result, observed commands and final activation flag.
+# @details Owns a PTY pair and server thread, which are closed even on failure.
+# Model assertion failures are propagated after the server thread is joined.
 def run(action, jed, fault=None):
     master, slave = pty.openpty()
     port = os.ttyname(slave)
@@ -27,6 +36,9 @@ def run(action, jed, fault=None):
     stopped = threading.Event()
     activated = False
     staged_reads = set()
+    ## @brief Serves framed commands until the test requests shutdown.
+    # @details Mutates the enclosing memory and command log, injects the selected
+    # fault, and captures exceptions for the calling test thread to re-raise.
     def server():
         nonlocal activated
         buf = b''
@@ -50,7 +62,7 @@ def run(action, jed, fault=None):
                     seq, cmd = body.decode().split(' ', 1)
                     commands.append(cmd)
                     result = 'OK'
-                    if cmd == 'HELLO': result += ' ATF1502 1'
+                    if cmd == 'HELLO': result += ' ATF1502 1 v0.1.0'
                     elif cmd == 'ID': result += ' ' + ('0150403F' if fault == 'id' else '0150203F')
                     elif cmd == 'BEGIN': active = True
                     elif cmd == 'END': active = False

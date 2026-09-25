@@ -1,8 +1,10 @@
 # Validation
 
-The implementation has not yet programmed a physical CPLD. Simulation verifies
-software behavior, not the undocumented device algorithm or electrical timing
-on this particular assembled PCB.
+The implementation has successfully programmed and verified a physical
+ATF1502AS on the assembled PCB through a Leonardo using native Windows USB
+serial. Verification also passed after the user disconnected and reconnected USB.
+This confirms retention for the tested device and image; broader device coverage
+and application-level logic still need testing.
 
 ## Checks completed during implementation
 
@@ -30,7 +32,33 @@ Python is only needed for the Linux PTY tests. C++ core and firmware simulation
 tests also build on Windows. CI is configured to run native Windows tests;
 configuration alone is not evidence that those remote jobs have run.
 
-## First hardware test
+## Physical Windows test — 2026-09-25
+
+- Uploaded the current Leonardo firmware through Windows Arduino CLI. The
+  bootloader appeared on COM4; avrdude verified all 9,072 bytes. The running
+  firmware returned to COM3 and passed the CRC-protected USB handshake.
+- Read the inserted CPLD's JTAG IDCODE: `0x0150203F` (ATF1502AS).
+- Used the MinGW-built `atfprog.exe` natively on Windows to flash
+  `p2000m-cpm-coboard.jed` (16,808 fuses).
+- Erase and blank check passed for all 212 mapped words.
+- All 212 staged programming words passed readback verification; the final
+  activation word also passed. The flash command exited successfully.
+- A separate `verify` command reopened COM3, identified the chip again and
+  matched all 212 words against the original JEDEC file. It exited successfully.
+
+Tested JEDEC SHA-256:
+
+```text
+abf80f86a1adcbbb0e93fcafdb2af26c866ba0351c2b0b858e342c4a9b176b53
+```
+
+The user then disconnected and reconnected USB to cycle power. A further
+read-only `verify` invocation on COM3 identified the ATF1502AS again and matched
+all 212 words against the same JEDEC file, exiting successfully. This confirms
+retention and continued JTAG access across that power cycle. Operation in the
+application circuit and physical USB programming from Linux remain untested.
+
+## Hardware test procedure
 
 1. Upload the firmware and run `scan` with an ATF1502AS in the socket. Record
    the reported IDCODE (expected 0150203F).

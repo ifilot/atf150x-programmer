@@ -5,10 +5,17 @@ Arduino Leonardo firmware and a native C++17 command-line tool for the PCB in
 USB serial. No vendor programmer software, JEDEC converter, Python runtime or
 external serial library is required.
 
-**Status:** initial implementation, built and tested in simulation. Successful
-programming on a physical PCB still needs to be confirmed. Linux builds and the
-Windows cross-build have been checked; native Windows USB operation has not yet
-been tested.
+The firmware and CLI are released together and currently share semantic
+version **v0.1.0**. `atfprog --version` prints the installed CLI version; the
+firmware reports the same version during the USB handshake. Release changes are
+listed in [CHANGELOG.md](CHANGELOG.md).
+
+**Status:** initial implementation tested on the physical PCB with an Arduino
+Leonardo and ATF1502AS through native Windows USB serial. Erase, blank check,
+programming and verification passed, including verification after a USB power cycle.
+Linux builds and simulated serial tests pass; physical Linux USB operation and
+application logic testing remain pending. See
+[validation details](docs/VALIDATION.md).
 
 ## Hardware
 
@@ -50,6 +57,24 @@ On Windows use the corresponding `COM` port in the upload command. Uploading
 firmware and flashing the CPLD are separate operations. The Leonardo can change
 ports while its bootloader is active; use its normal application port for
 `atfprog`. Close Serial Monitor before opening the CLI.
+
+## Download CI artifacts
+
+Each GitHub Actions run publishes three versioned artifacts:
+
+- `atfprog-v0.1.0-linux-x86_64`, with a statically linked Linux executable.
+- `atfprog-v0.1.0-windows-x86_64`, with a statically linked MinGW executable.
+- `atf1502-leonardo-firmware-v0.1.0`, with the sketch ELF, EEPROM image,
+  application HEX and bootloader-inclusive HEX/BIN images.
+
+The artifacts also include `README.md`, `CHANGELOG.md` and the GPLv3 license.
+They are produced for pushes, pull requests and manual workflow runs and are
+retained by GitHub Actions for 30 days.
+
+Pushing a version tag such as `v0.1.0` also creates a draft GitHub release
+after all builds and checks pass. The tag must match the shared version in
+`firmware/atf1502_programmer/version.h`. The draft contains compressed Linux,
+Windows and firmware packages together with a `SHA256SUMS` file.
 
 ## Build the CLI
 
@@ -132,6 +157,7 @@ Additional commands:
 build/atfprog verify path/to/design.jed --port /dev/ttyACM0
 build/atfprog erase --port /dev/ttyACM0
 build/atfprog --help
+build/atfprog --version
 ```
 
 `verify` reads and compares without erasing or programming. `erase` destroys the

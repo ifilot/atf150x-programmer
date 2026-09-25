@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 ATF1502 programmer contributors
+
+/**
+ * @file
+ * @brief Validated JEDEC input and ATF1502AS physical fuse-map interfaces.
+ */
 #ifndef ATF150X_PROGRAMMER_CLI_SRC_JEDEC_H_
 #define ATF150X_PROGRAMMER_CLI_SRC_JEDEC_H_
 
@@ -19,24 +24,55 @@ using Fuses = std::array<uint8_t, kFuseCount>;
 using Word = std::vector<uint8_t>;
 using Image = std::map<unsigned int, Word>;
 
-// Validates framing, checksums, fuse count and supported configuration options.
-// On success, replaces *fuses with the complete map, including default fuses.
-// The output pointer must not be null and is unchanged on failure.
+/**
+ * @brief Parses and validates an ATF1502AS JEDEC file.
+ *
+ * Accepts sparse fuse records and checks the complete resulting map. Rejects
+ * unsupported fuse counts, locking options and nonzero reserved fuses.
+ *
+ * @param[in] text Complete file contents, preserving original line endings.
+ * @param[out] fuses Non-null destination; unchanged on failure.
+ * @return Success or a framing, checksum, record or configuration error.
+ */
 Status ParseJedec(const std::string& text, Fuses* fuses);
 
-// Maps binary fuse values to the 212 physical words, with unused cells erased.
-// The caller must supply 16,808 binary values; reserved fuses are not mapped.
+/**
+ * @brief Maps JEDEC fuse indices to physical Flash words.
+ *
+ * The caller supplies validated binary values. Reserved JEDEC fuses are
+ * omitted. Byte and bit zero shift first; unused wire bits are zero.
+ *
+ * @param[in] fuses Complete array of 16,808 binary fuse values.
+ * @return The 212 mapped words, with unused physical cells set to one.
+ */
 Image PackFuses(const Fuses& fuses);
 
-// Encodes bytes in wire order, without reversing the byte sequence.
+/**
+ * @brief Encodes bytes as uppercase hexadecimal pairs.
+ *
+ * @param[in] bytes Bytes already arranged in wire order.
+ * @return Two hexadecimal characters per byte; byte order is preserved.
+ */
 std::string EncodeHex(const Word& bytes);
 
-// Decodes hexadecimal byte pairs. Output must be non-null and is unchanged on
-// failure. Odd-length strings and non-hexadecimal characters are rejected.
+/**
+ * @brief Decodes hexadecimal byte pairs without reordering them.
+ *
+ * @param[in] text Even-length hexadecimal string; letter case is ignored.
+ * @param[out] bytes Non-null destination; unchanged on failure.
+ * @return Success, or an error for odd length or invalid characters.
+ */
 Status DecodeHex(const std::string& text, Word* bytes);
 
-// Reads binary data so CRLF bytes remain intact for checksum validation.
-// Output must be non-null and is unchanged if the file cannot be read.
+/**
+ * @brief Reads a complete file without newline translation.
+ *
+ * Binary mode preserves CRLF bytes used by the transmission checksum.
+ *
+ * @param[in] path File path in the host operating system.
+ * @param[out] text Non-null destination; unchanged on failure.
+ * @return Success or a file-open/read error.
+ */
 Status ReadFile(const std::string& path, std::string* text);
 
 }  // namespace atf

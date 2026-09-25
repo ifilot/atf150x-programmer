@@ -1,30 +1,206 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ATF1502 programmer contributors
-name: Software builds
-on: [push, pull_request]
+name: Build and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
-  host:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-      - run: cmake --build build --config Release --parallel
-      - run: ctest --test-dir build -C Release --output-on-failure
-  firmware:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: arduino/setup-arduino-cli@v2
-      - run: arduino-cli core update-index
-      - run: arduino-cli core install arduino:avr@1.8.8
-      - run: arduino-cli compile --fqbn arduino:avr:leonardo firmware/atf1502_programmer
-  style:
+  linux-cli:
+    name: Linux CLI
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
-      - run: cmake -S . -B build -DBUILD_TESTING=OFF
-      - run: cmake --build build --target format-check
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DATF_STATIC_RUNTIME=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Read version
+        id: version
+        run: echo "tag=$(./build/atfprog --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          package="dist/atfprog-${{ steps.version.outputs.tag }}-linux-x86_64"
+          cmake --install build --prefix "$package"
+          cp README.md CHANGELOG.md LICENSE "$package/"
+
+      - name: Upload Linux CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: atfprog-${{ steps.version.outputs.tag }}-linux-x86_64
+          path: dist/atfprog-${{ steps.version.outputs.tag }}-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-cli:
+    name: Windows CLI
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Read version
+        id: version
+        run: echo "tag=$(./build/atfprog.exe --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          package="dist/atfprog-${{ steps.version.outputs.tag }}-windows-x86_64"
+          cmake --install build --prefix "$package"
+          cp README.md CHANGELOG.md LICENSE "$package/"
+
+      - name: Upload Windows CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: atfprog-${{ steps.version.outputs.tag }}-windows-x86_64
+          path: dist/atfprog-${{ steps.version.outputs.tag }}-windows-x86_64
+          if-no-files-found: error
+          retention-days: 30
+
+  firmware:
+    name: Arduino Leonardo firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Arduino AVR core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr@1.8.8
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's/.*kVersion\[\] = "\([^"]*\)".*/\1/p' firmware/atf1502_programmer/version.h)
+          test -n "$version"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build firmware
+        run: |
+          mkdir -p dist/firmware
+          arduino-cli compile \
+            --fqbn arduino:avr:leonardo \
+            --output-dir dist/firmware \
+            firmware/atf1502_programmer
+
+      - name: Add release documentation
+        run: cp README.md CHANGELOG.md LICENSE dist/firmware/
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}
+          path: dist/firmware
+          if-no-files-found: error
+          retention-days: 30
+
+  style:
+    name: Style
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+
+      - name: Configure
+        run: cmake -S . -B build -DBUILD_TESTING=OFF
+
+      - name: Check formatting
+        run: cmake --build build --target format-check
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - linux-cli
+      - windows-cli
+      - firmware
+      - style
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify release tag
+        id: version
+        run: |
+          version=$(sed -n 's/.*kVersion\[\] = "\([^"]*\)".*/\1/p' firmware/atf1502_programmer/version.h)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download Linux CLI
+        uses: actions/download-artifact@v4
+        with:
+          name: atfprog-${{ steps.version.outputs.tag }}-linux-x86_64
+          path: release/atfprog-${{ steps.version.outputs.tag }}-linux-x86_64
+
+      - name: Download Windows CLI
+        uses: actions/download-artifact@v4
+        with:
+          name: atfprog-${{ steps.version.outputs.tag }}-windows-x86_64
+          path: release/atfprog-${{ steps.version.outputs.tag }}-windows-x86_64
+
+      - name: Download firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}
+          path: release/atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}
+
+      - name: Create release archives
+        working-directory: release
+        run: |
+          tar -czf "atfprog-${{ steps.version.outputs.tag }}-linux-x86_64.tar.gz" \
+            "atfprog-${{ steps.version.outputs.tag }}-linux-x86_64"
+          zip -qr "atfprog-${{ steps.version.outputs.tag }}-windows-x86_64.zip" \
+            "atfprog-${{ steps.version.outputs.tag }}-windows-x86_64"
+          zip -qr "atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}.zip" \
+            "atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}"
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.tar.gz release/*.zip release/SHA256SUMS \
+            --draft \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            --verify-tag
