@@ -8,6 +8,8 @@ ship with the same version.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-25
+
 ### Added
 
 - Matched ATF1502AS and ATF1504AS PLCC-44 WinCUPL logic-test sources and
@@ -37,5 +39,6 @@ ship with the same version.
 - Physical validation using an Arduino Leonardo and ATF1502AS, including
   verification after a power cycle.
 
-[Unreleased]: https://github.com/ifilot/atf150x-programmer/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ifilot/atf150x-programmer/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ifilot/atf150x-programmer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ifilot/atf150x-programmer/releases/tag/v0.1.0

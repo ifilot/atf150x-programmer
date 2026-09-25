@@ -64,7 +64,7 @@ change the whole-file SHA-256 even when the fuse checksum remains identical.
 Always disconnect USB before changing the device in the programmer socket.
 Confirm the PLCC-44 orientation before reconnecting power.
 
-The development v0.2.0 flasher can inspect, flash, and verify either image:
+The v0.2.0 flasher can inspect, flash, and verify either image:
 
 ```powershell
 atfprog.exe inspect examples\logic_test\atf1502as-plcc44.jed
