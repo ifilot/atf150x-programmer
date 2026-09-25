@@ -24,3 +24,7 @@ fp-info-cache
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Software build outputs
+/build*/
+__pycache__/
