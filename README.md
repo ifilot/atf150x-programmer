@@ -1,5 +1,9 @@
 # ATF1502AS programmer
 
+[![GitHub Actions](https://github.com/ifilot/atf150x-programmer/actions/workflows/build.yml/badge.svg)](https://github.com/ifilot/atf150x-programmer/actions/workflows/build.yml)
+[![Version](https://img.shields.io/github/v/tag/ifilot/atf150x-programmer?label=version)](https://github.com/ifilot/atf150x-programmer/releases)
+[![License: GPL v3](https://img.shields.io/github/license/ifilot/atf150x-programmer)](LICENSE)
+
 Arduino Leonardo firmware and a native C++17 command-line tool for the PCB in
 `pcb/atf150X-programmer`. Programs an existing WinCUPL JEDEC file directly over
 USB serial. No vendor programmer software, JEDEC converter, Python runtime or
