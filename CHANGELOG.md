@@ -8,6 +8,17 @@ ship with the same version.
 
 ## [Unreleased]
 
+### Added
+
+- Matched ATF1502AS and ATF1504AS PLCC-44 WinCUPL logic-test sources and
+  generated JEDEC files for device-support validation.
+- ATF1504AS identification, JEDEC parsing, complete fuse mapping, erase, blank
+  check, programming, activation, and verification across all 216 physical
+  words.
+- Bidirectional physical ATF1504AS cross-validation: this project verified an
+  image written by an official ATDH1150USB programmer, and that programmer
+  verified an image written by this project.
+
 ## [0.1.0] - 2026-09-25
 
 ### Added

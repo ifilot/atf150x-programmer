@@ -1,0 +1,16 @@
+# WinCUPL intermediate and report files.
+*.abs
+*.doc
+*.err
+*.fit
+*.io
+*.lst
+*.mx
+*.pin
+*.pla
+*.sim
+*.tt2
+*.tt3
+*.tmv
+*.vt
+

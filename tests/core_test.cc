@@ -29,7 +29,7 @@ namespace {
 std::string BuildJedec(const atf::Fuses& f) {
     unsigned int sum = 0;
     std::ostringstream s;
-    s << '\x02' << "test*QF16808*F0*L0 ";
+    s << '\x02' << "test*QF" << f.size() << "*F0*L0 ";
     for (unsigned int i = 0; i < f.size(); ++i) {
         s << static_cast<unsigned int>(f[i]);
         sum += static_cast<unsigned int>(f[i]) << (i % 8);
@@ -45,10 +45,10 @@ std::string BuildJedec(const atf::Fuses& f) {
  * @param[in] text Complete JEDEC fixture.
  * @return Parsed fuses; aborts the test if parsing fails.
  */
-atf::Fuses ParseForTest(const std::string& text) {
-    atf::Fuses fuses;
-    ATF_CHECK(atf::ParseJedec(text, &fuses).ok());
-    return fuses;
+atf::JedecFile ParseForTest(const std::string& text) {
+    atf::JedecFile jedec;
+    ATF_CHECK(atf::ParseJedec(text, &jedec).ok());
+    return jedec;
 }
 
 /**
@@ -71,8 +71,8 @@ atf::Word DecodeForTest(const std::string& text) {
  * @param[in] text Complete candidate JEDEC document.
  */
 void ExpectRejected(const std::string& text) {
-    atf::Fuses fuses;
-    ATF_CHECK(!atf::ParseJedec(text, &fuses).ok());
+    atf::JedecFile jedec;
+    ATF_CHECK(!atf::ParseJedec(text, &jedec).ok());
 }
 
 }  // namespace
@@ -84,7 +84,7 @@ void ExpectRejected(const std::string& text) {
  */
 int main() {
     ATF_CHECK(atf::Crc16("123456789", 9) == 0x29b1);
-    atf::Fuses f{};
+    atf::Fuses f(16808, 0);
     for (unsigned int i = 16782; i < 16786; ++i) {
         f[i] = 1;
     }
@@ -100,16 +100,17 @@ int main() {
     f[16749] = 1;
     f[16786] = 1;
     auto text = BuildJedec(f);
-    ATF_CHECK(ParseForTest(text) == f);
+    ATF_CHECK(ParseForTest(text).fuses == f);
     // Failed status-returning APIs must not publish partial output.
-    atf::Fuses unchanged_fuses = f;
-    ATF_CHECK(!atf::ParseJedec("invalid", &unchanged_fuses).ok());
-    ATF_CHECK(unchanged_fuses == f);
+    atf::JedecFile unchanged{atf::Device::kAtf1502as, f};
+    ATF_CHECK(!atf::ParseJedec("invalid", &unchanged).ok());
+    ATF_CHECK(unchanged.device == atf::Device::kAtf1502as);
+    ATF_CHECK(unchanged.fuses == f);
     atf::Word unchanged_bytes{0xa5};
     ATF_CHECK(!atf::DecodeHex("01XZ", &unchanged_bytes).ok());
     ATF_CHECK(unchanged_bytes == atf::Word{0xa5});
 
-    auto image = atf::PackFuses(f);
+    auto image = atf::PackFuses(atf::Device::kAtf1502as, f);
     ATF_CHECK(image.size() == 212);
     auto bit = [&](unsigned int r, unsigned int c) {
         return (image.at(r)[c / 8] >> (c % 8)) & 1;
@@ -135,12 +136,12 @@ int main() {
     }
     // Every physical mapped cell has one distinct JEDEC index (including all
     // boundaries).
-    atf::Fuses ones{};
-    ones.fill(1);
-    auto all = atf::PackFuses(ones);
+    atf::Fuses ones(16808, 1);
+    auto all = atf::PackFuses(atf::Device::kAtf1502as, ones);
     size_t cell_count = 0;
     for (const auto& e : all) {
-        for (unsigned int col = 0; col < atf::WordBits(e.first); ++col) {
+        for (unsigned int col = 0;
+             col < atf::WordBits(atf::Device::kAtf1502as, e.first); ++col) {
             unsigned int index = 16808, r = e.first;
             if (r < 12 && col < 80) {
                 index = 15360 + r * 80 + 79 - col;
@@ -197,12 +198,71 @@ int main() {
     }
     std::ostringstream checksum;
     checksum << std::hex << std::setw(4) << std::setfill('0') << (sum & 65535);
-    ATF_CHECK(ParseForTest(text.substr(0, etx + 1) + checksum.str()) == f);
+    ATF_CHECK(ParseForTest(text.substr(0, etx + 1) + checksum.str()).fuses ==
+              f);
+    atf::Fuses f4(34192, 0);
+    for (unsigned int i = 34166; i < 34170; ++i) {
+        f4[i] = 1;
+    }
+    f4[0] = 1;
+    f4[15359] = 1;
+    f4[15360] = 1;
+    f4[30719] = 1;
+    f4[30720] = 1;
+    f4[32639] = 1;
+    f4[32640] = 1;
+    f4[34133] = 1;
+    f4[34170] = 1;
+    auto parsed4 = ParseForTest(BuildJedec(f4));
+    ATF_CHECK(parsed4.device == atf::Device::kAtf1504as);
+    ATF_CHECK(parsed4.fuses == f4);
+    auto image4 = atf::PackFuses(parsed4.device, parsed4.fuses);
+    ATF_CHECK(image4.size() == 216);
+    ATF_CHECK(image4.at(0).size() == 21);
+    ATF_CHECK(image4.at(232).size() == 21);
+    ATF_CHECK(image4.at(512)[0] == 15);
+    size_t cell_count4 = 0;
+    for (const auto& entry : image4) {
+        unsigned int row = entry.first;
+        for (unsigned int col = 0;
+             col < atf::WordBits(atf::Device::kAtf1504as, row); ++col) {
+            unsigned int index = 34192;
+            if (row < 12 && col >= 6) {
+                index = 30720 + row * 160 + 165 - col;
+            } else if (row >= 12 && row < 108 && col >= 6) {
+                index = row - 12 + (165 - col) * 96;
+            } else if (row >= 128 && row < 224 && col >= 6) {
+                index = 15360 + row - 128 + (165 - col) * 96;
+            } else if (row >= 224 && row < 233) {
+                index = 32640 + row - 224 + (165 - col) * 9;
+            } else if (row == 256) {
+                index = 34134 + 31 - col;
+            } else if (row == 512) {
+                index = 34166 + 3 - col;
+            } else if (row == 768) {
+                index = 34170 + 15 - col;
+            }
+            unsigned int actual = (entry.second[col / 8] >> (col % 8)) & 1;
+            if (index < 34186) {
+                ATF_CHECK(actual == f4[index]);
+                ++cell_count4;
+            } else {
+                ATF_CHECK(actual);
+            }
+        }
+    }
+    ATF_CHECK(cell_count4 == 34186);
+    auto bad4 = f4;
+    bad4[34166] = 0;
+    ExpectRejected(BuildJedec(bad4));
+    bad4 = f4;
+    bad4[34186] = 1;
+    ExpectRejected(BuildJedec(bad4));
     // Exercise the actual firmware JTAG engine with independent TAP
     // transitions.
     atf::testing::Tap tap;
     atf::Jtag<atf::testing::Tap> jtag(tap);
-    ATF_CHECK(jtag.Identify() == atf::kDeviceId);
+    ATF_CHECK(jtag.Identify() == atf::kAtf1502Id);
     ATF_CHECK(tap.state == atf::testing::Tap::kIdle);
     jtag.Enable();
     ATF_CHECK(tap.enabled);
@@ -210,10 +270,11 @@ int main() {
     ATF_CHECK(tap.delays.back() == 210);
     for (unsigned int addr : {0u, 107u, 128u, 228u, 256u, 512u, 768u}) {
         auto word = image.at(addr);
-        jtag.Program(addr, word.data());
+        unsigned int bits = atf::WordBits(atf::Device::kAtf1502as, addr);
+        jtag.Program(addr, bits, word.data());
         ATF_CHECK(tap.delays.back() == 30);
         atf::Word got(word.size());
-        jtag.Read(addr, got.data());
+        jtag.Read(addr, bits, got.data());
         ATF_CHECK(tap.delays.back() == 20);
         ATF_CHECK(got == word);
     }

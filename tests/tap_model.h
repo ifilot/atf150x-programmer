@@ -54,6 +54,7 @@ struct Tap {
     atf::Word shift_data;
     bool enabled = false;
     bool erase_latched = false;
+    atf::Device device = atf::Device::kAtf1502as;
 
     /**
      * @brief Interprets the captured shift history as a little-endian integer.
@@ -93,7 +94,7 @@ struct Tap {
         bool out = false;
         if (state == kShiftDr || state == kShiftIr) {
             if (state == kShiftDr && ir == 0x059) {
-                out = (atf::kDeviceId >> count) & 1;
+                out = (atf::DeviceId(device) >> count) & 1;
             } else if (state == kShiftDr && (ir & ~3u) == 0x290 &&
                        memory.count(address)) {
                 out = (memory[address][count / 8] >> (count % 8)) & 1;
@@ -137,7 +138,7 @@ struct Tap {
                 address = ShiftedInteger();
             }
             if ((ir & ~3u) == 0x290) {
-                ATF_CHECK(count == atf::WordBits(address));
+                ATF_CHECK(count == atf::WordBits(device, address));
                 ATF_CHECK(ir == (0x290 | (address >> 8)));
                 shift_data.assign((count + 7) / 8, 0);
                 for (unsigned int i = 0; i < count; ++i) {

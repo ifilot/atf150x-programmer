@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 ATF1502 programmer contributors
-PROJECT_NAME           = "ATF1502AS programmer"
+PROJECT_NAME           = "ATF150x programmer"
 OUTPUT_DIRECTORY       = build-docs
 INPUT                  = cli firmware tests
 RECURSIVE              = YES
