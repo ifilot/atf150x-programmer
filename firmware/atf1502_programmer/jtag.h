@@ -3,9 +3,9 @@
 
 /**
  * @file
- * @brief Portable ATF1502AS TAP and programming sequences.
+ * @brief Portable ATF15xx TAP and programming sequences.
  */
-// ATF1502AS algorithm derived from Project Bureau; see docs/THIRD_PARTY.md.
+// ATF15xx algorithm derived from Project Bureau; see docs/THIRD_PARTY.md.
 #ifndef ATF150X_PROGRAMMER_FIRMWARE_ATF1502_PROGRAMMER_JTAG_H_
 #define ATF150X_PROGRAMMER_FIRMWARE_ATF1502_PROGRAMMER_JTAG_H_
 
@@ -17,7 +17,7 @@
 namespace atf {
 
 /**
- * @brief Drives one ATF1502AS TAP through a caller-owned I/O backend.
+ * @brief Drives one supported ATF15xx TAP through a caller-owned I/O backend.
  *
  * The backend must outlive this object. Call Reset() or Identify() before
  * other operations. Every scan ends in Run-Test/Idle.
@@ -84,10 +84,10 @@ public:
      *
      * @param[in] address Mapped physical address for which WordBits() is
      * nonzero.
-     * @param[in] data Non-null buffer of at least ceil(WordBits(address) / 8)
-     * bytes.
+     * @param[in] bits Device-specific data-register width.
+     * @param[in] data Non-null buffer of at least ceil(bits / 8) bytes.
      */
-    void Program(unsigned int address, const uint8_t* data);
+    void Program(unsigned int address, unsigned int bits, const uint8_t* data);
 
     /**
      * @brief Reads one mapped Flash word after the device read delay.
@@ -98,10 +98,10 @@ public:
      *
      * @param[in] address Mapped physical address for which WordBits() is
      * nonzero.
-     * @param[out] data Non-null buffer of at least ceil(WordBits(address) / 8)
-     * bytes.
+     * @param[in] bits Device-specific data-register width.
+     * @param[out] data Non-null buffer of at least ceil(bits / 8) bytes.
      */
-    void Read(unsigned int address, uint8_t* data);
+    void Read(unsigned int address, unsigned int bits, uint8_t* data);
 
 private:
     /**
@@ -271,10 +271,11 @@ void Jtag<Io>::SelectAddress(unsigned int address) {
  * @brief Loads a word and starts the timed programming cycle.
  */
 template <typename Io>
-void Jtag<Io>::Program(unsigned int address, const uint8_t* data) {
+void Jtag<Io>::Program(unsigned int address, unsigned int bits,
+                       const uint8_t* data) {
     SelectAddress(address);
     ShiftInstruction(static_cast<uint16_t>(0x290 | (address >> 8)));
-    Scan(false, WordBits(address), data, nullptr);
+    Scan(false, bits, data, nullptr);
     ShiftInstruction(0x29e);
     io_.WaitMilliseconds(30);
     ShiftInstruction(0x2bf);
@@ -284,12 +285,12 @@ void Jtag<Io>::Program(unsigned int address, const uint8_t* data) {
  * @brief Triggers readback before shifting out the selected word.
  */
 template <typename Io>
-void Jtag<Io>::Read(unsigned int address, uint8_t* data) {
+void Jtag<Io>::Read(unsigned int address, unsigned int bits, uint8_t* data) {
     SelectAddress(address);
     ShiftInstruction(0x28c);
     io_.WaitMilliseconds(20);
     ShiftInstruction(static_cast<uint16_t>(0x290 | (address >> 8)));
-    Scan(false, WordBits(address), nullptr, data);
+    Scan(false, bits, nullptr, data);
 }
 
 }  // namespace atf

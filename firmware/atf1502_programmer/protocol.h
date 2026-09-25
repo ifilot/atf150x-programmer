@@ -13,8 +13,134 @@
 
 namespace atf {
 
-constexpr uint32_t kDeviceId = 0x0150203f;
-constexpr unsigned int kFuseCount = 16808;
+/** @brief Devices understood by the host and firmware protocol. */
+enum class Device : uint8_t {
+    kUnknown,
+    kAtf1502as,
+    kAtf1504as,
+};
+
+constexpr uint32_t kAtf1502Id = 0x0150203f;
+constexpr uint32_t kAtf1504Id = 0x0150403f;
+
+/**
+ * @brief Converts a JTAG IDCODE into a supported device selector.
+ *
+ * @param[in] idcode Raw 32-bit JTAG identification code.
+ * @return Matching selector, or Device::kUnknown.
+ */
+inline Device DeviceFromId(uint32_t idcode) {
+    if (idcode == kAtf1502Id) {
+        return Device::kAtf1502as;
+    }
+    if (idcode == kAtf1504Id) {
+        return Device::kAtf1504as;
+    }
+    return Device::kUnknown;
+}
+
+/**
+ * @brief Returns the JTAG IDCODE for a supported device.
+ *
+ * @param[in] device Device selector.
+ * @return IDCODE, or zero for Device::kUnknown.
+ */
+inline uint32_t DeviceId(Device device) {
+    if (device == Device::kAtf1502as) {
+        return kAtf1502Id;
+    }
+    if (device == Device::kAtf1504as) {
+        return kAtf1504Id;
+    }
+    return 0;
+}
+
+/**
+ * @brief Returns the printable device name.
+ *
+ * @param[in] device Device selector.
+ * @return Static name string.
+ */
+inline const char* DeviceName(Device device) {
+    if (device == Device::kAtf1502as) {
+        return "ATF1502AS";
+    }
+    if (device == Device::kAtf1504as) {
+        return "ATF1504AS";
+    }
+    return "unknown device";
+}
+
+/**
+ * @brief Returns the JEDEC fuse count for a supported device.
+ *
+ * @param[in] device Device selector.
+ * @return Fuse count, or zero for Device::kUnknown.
+ */
+inline unsigned int FuseCount(Device device) {
+    if (device == Device::kAtf1502as) {
+        return 16808;
+    }
+    if (device == Device::kAtf1504as) {
+        return 34192;
+    }
+    return 0;
+}
+
+/**
+ * @brief Selects a device from its JEDEC fuse count.
+ *
+ * @param[in] count QF value from the JEDEC file.
+ * @return Matching selector, or Device::kUnknown.
+ */
+inline Device DeviceFromFuseCount(unsigned int count) {
+    if (count == 16808) {
+        return Device::kAtf1502as;
+    }
+    if (count == 34192) {
+        return Device::kAtf1504as;
+    }
+    return Device::kUnknown;
+}
+
+/**
+ * @brief Returns the first trailing reserved JEDEC fuse.
+ *
+ * @param[in] device Device selector.
+ * @return First reserved fuse, or zero for Device::kUnknown.
+ */
+inline unsigned int ReservedFuseStart(Device device) {
+    if (device == Device::kAtf1502as) {
+        return 16802;
+    }
+    return device == Device::kAtf1504as ? 34186 : 0;
+}
+
+/**
+ * @brief Returns the first fuse in the four-bit JTAG/security word.
+ *
+ * @param[in] device Device selector.
+ * @return First JTAG fuse, or zero for Device::kUnknown.
+ */
+inline unsigned int JtagFuseStart(Device device) {
+    if (device == Device::kAtf1502as) {
+        return 16782;
+    }
+    return device == Device::kAtf1504as ? 34166 : 0;
+}
+
+/**
+ * @brief Returns the arming-switch JEDEC fuse index.
+ *
+ * @param[in] device Device selector.
+ * @return Arming fuse index, or zero for Device::kUnknown.
+ */
+inline unsigned int ArmingFuse(Device device) {
+    if (device == Device::kAtf1502as) {
+        return 16750;
+    }
+    return device == Device::kAtf1504as ? 34134 : 0;
+}
 
 /**
  * @brief Computes CRC-16/CCITT-FALSE for the supplied bytes.
@@ -56,14 +182,20 @@ inline int HexDigit(char c) {
 }
 
 /**
- * @brief Looks up the ATF1502AS data-register width for a physical word.
+ * @brief Looks up a device's data-register width for a physical word.
  *
+ * @param[in] device Device selector.
  * @param[in] address Physical Flash row address.
  * @return Width in bits, or zero for an unmapped address.
  */
-inline unsigned int WordBits(unsigned int address) {
-    if (address < 108 || (address >= 128 && address < 229)) {
+inline unsigned int WordBits(Device device, unsigned int address) {
+    if (device == Device::kAtf1502as &&
+        (address < 108 || (address >= 128 && address < 229))) {
         return 86;
+    }
+    if (device == Device::kAtf1504as &&
+        (address < 108 || (address >= 128 && address < 233))) {
+        return 166;
     }
     if (address == 256) {
         return 32;

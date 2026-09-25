@@ -11,10 +11,10 @@
 namespace atf {
 
 /** Semantic version shared by the Leonardo firmware and atfprog. */
-constexpr char kVersion[] = "0.1.0";
+constexpr char kVersion[] = "0.2.0";
 
 /** Wire-protocol revision, versioned independently from the release. */
-constexpr unsigned int kProtocolVersion = 1;
+constexpr unsigned int kProtocolVersion = 2;
 
 }  // namespace atf
 

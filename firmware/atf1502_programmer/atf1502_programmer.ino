@@ -3,7 +3,7 @@
 
 /**
  * @file
- * @brief Leonardo GPIO backend and bounded USB programmer command service.
+ * @brief Leonardo GPIO backend and bounded ATF15xx command service.
  */
 #include <Arduino.h>
 #include <stdint.h>
@@ -63,6 +63,7 @@ public:
 Pins pins;
 atf::Jtag<Pins> jtag(pins);
 bool active = false;
+atf::Device active_device = atf::Device::kUnknown;
 bool driving = false;
 bool overflow = false;
 // Fixed storage bounds RAM use and lets the parser discard overlong frames.
@@ -82,6 +83,7 @@ void ReleasePins() {
         jtag.Disable();
     }
     active = false;
+    active_device = atf::Device::kUnknown;
     driving = false;
     pinMode(kTckPin, INPUT);
     pinMode(kTdiPin, INPUT);
@@ -143,14 +145,16 @@ void HandleWord(unsigned int sequence, bool write, char* start) {
     char* end;
     auto address = strtoul(start, &end, 16);
     unsigned int bits =
-        address <= 768 ? atf::WordBits(static_cast<unsigned int>(address)) : 0;
+        address <= 768
+            ? atf::WordBits(active_device, static_cast<unsigned int>(address))
+            : 0;
     if (end == start || !bits || (!write && *end) || (write && *end != ' ')) {
         ReleasePins();
         Reply(sequence, "ERR ADDRESS");
         return;
     }
     unsigned int bytes = (bits + 7) / 8;
-    uint8_t data[11] = {};
+    uint8_t data[21] = {};
     if (write) {
         // Validate the entire word before issuing a programming instruction.
         const char* hex_data = end + 1;
@@ -175,11 +179,11 @@ void HandleWord(unsigned int sequence, bool write, char* start) {
             Reply(sequence, "ERR PROTECTED");
             return;
         }
-        jtag.Program(static_cast<unsigned int>(address), data);
+        jtag.Program(static_cast<unsigned int>(address), bits, data);
         Reply(sequence, "OK");
     } else {
-        jtag.Read(static_cast<unsigned int>(address), data);
-        char buffer[28] = "OK ";
+        jtag.Read(static_cast<unsigned int>(address), bits, data);
+        char buffer[48] = "OK ";
         for (unsigned int i = 0; i < bytes; ++i) {
             size_t offset = 3 + 2 * i;
             snprintf(buffer + offset, sizeof(buffer) - offset, "%02X", data[i]);
@@ -202,7 +206,7 @@ void Dispatch(unsigned int sequence, char* command) {
     if (!strcmp(command, "HELLO")) {
         ReleasePins();
         char response[32];
-        snprintf(response, sizeof(response), "OK ATF1502 %u v%s",
+        snprintf(response, sizeof(response), "OK ATF15XX %u v%s",
                  atf::kProtocolVersion, atf::kVersion);
         Reply(sequence, response);
         return;
@@ -212,11 +216,25 @@ void Dispatch(unsigned int sequence, char* command) {
         Reply(sequence, "OK");
         return;
     }
-    if (!strcmp(command, "ID") || !strcmp(command, "BEGIN")) {
+    bool identify = !strcmp(command, "ID");
+    bool begin = !strncmp(command, "BEGIN ", 6);
+    if (identify || begin) {
+        uint32_t requested_id = 0;
+        if (begin) {
+            char* end;
+            auto value = strtoul(command + 6, &end, 16);
+            requested_id = static_cast<uint32_t>(value);
+            if (end == command + 6 || *end ||
+                atf::DeviceFromId(requested_id) == atf::Device::kUnknown) {
+                ReleasePins();
+                Reply(sequence, "ERR DEVICE");
+                return;
+            }
+        }
         ReleasePins();
         DrivePins();
         uint32_t id = jtag.Identify();
-        if (!strcmp(command, "ID")) {
+        if (identify) {
             char buffer[24];
             // The variadic %lX conversion requires unsigned long even on AVR.
             snprintf(buffer, sizeof(buffer), "OK %08lX",
@@ -225,12 +243,13 @@ void Dispatch(unsigned int sequence, char* command) {
             Reply(sequence, buffer);
             return;
         }
-        if (id != atf::kDeviceId) {
+        if (id != requested_id) {
             ReleasePins();
             Reply(sequence, "ERR DEVICE");
             return;
         }
         jtag.Enable();
+        active_device = atf::DeviceFromId(id);
         active = true;
         Reply(sequence, "OK");
         return;

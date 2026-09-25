@@ -81,7 +81,8 @@ Status Verify(Connection& connection, const Image& image) {
  */
 Status ProgramImage(Connection& connection, const Image& image) {
     Image staged = image;
-    staged.at(256)[3] |= 0x80;  // JEDEC 16750: arming switch, row 0x100 bit 31.
+    // Both supported devices map their arming switch to row 0x100 bit 31.
+    staged.at(256)[3] |= 0x80;
     unsigned int count = 0;
     for (const auto& entry : staged) {
         Status status =
@@ -122,20 +123,20 @@ Status ProgramImage(Connection& connection, const Image& image) {
  *
  * @param[in,out] connection Open connection with programming mode enabled.
  * @param[in] action One of erase, flash or verify.
+ * @param[in] device Device selected from the physical IDCODE.
  * @param[in] image Expected map; unused for erase.
  * @return Success or the first erase, blank-check, program or verify error.
  */
 Status RunOperation(Connection& connection, const std::string& action,
-                    const Image& image) {
+                    Device device, const Image& image) {
     if (action == "erase" || action == "flash") {
         std::cerr << "Erasing...\n";
         Status status = connection.Command("ERASE");
         if (!status.ok()) {
             return status;
         }
-        Fuses erased_fuses{};
-        erased_fuses.fill(1);
-        status = Verify(connection, PackFuses(erased_fuses));
+        Fuses erased_fuses(FuseCount(device), 1);
+        status = Verify(connection, PackFuses(device, erased_fuses));
         if (!status.ok()) {
             return status;
         }
@@ -153,7 +154,7 @@ Status RunOperation(Connection& connection, const std::string& action,
  * @brief Writes command syntax and erase behavior to stdout.
  */
 void PrintUsage() {
-    std::cout << "ATF1502AS programmer v" << kVersion << "\n"
+    std::cout << "ATF1502AS/ATF1504AS programmer v" << kVersion << "\n"
               << "  atfprog inspect FILE.jed\n"
               << "  atfprog scan --port PORT\n"
               << "  atfprog erase --port PORT\n"
@@ -200,6 +201,7 @@ Status Run(int argc, char** argv) {
     if (action == "inspect" && !port.empty()) {
         return Status("inspect does not use a serial port");
     }
+    JedecFile jedec;
     Image image;
     if (needs_file) {
         // Validate before opening the port, so bad files cannot erase a device.
@@ -208,16 +210,16 @@ Status Run(int argc, char** argv) {
         if (!status.ok()) {
             return status;
         }
-        Fuses fuses;
-        status = ParseJedec(text, &fuses);
+        status = ParseJedec(text, &jedec);
         if (!status.ok()) {
             return status;
         }
-        image = PackFuses(fuses);
-        std::cout << "ATF1502AS: " << kFuseCount << " fuses, " << image.size()
+        image = PackFuses(jedec.device, jedec.fuses);
+        std::cout << DeviceName(jedec.device) << ": " << FuseCount(jedec.device)
+                  << " fuses, " << image.size()
                   << " programming words; fuse checksum valid; JTAG enabled, "
                      "read protection off.\n";
-        if (fuses[16750]) {
+        if (jedec.fuses[ArmingFuse(jedec.device)]) {
             std::cout << "Image leaves CPLD outputs disabled (arming switch is "
                          "safe).\n";
         }
@@ -239,18 +241,27 @@ Status Run(int argc, char** argv) {
         return status;
     }
     std::cout << "IDCODE: 0x" << id << '\n';
-    if (id != "0150203F") {
-        return Status(
-            "Expected ATF1502AS IDCODE 0150203F; check chip, power and wiring");
+    Device device = Device::kUnknown;
+    if (id == "0150203F") {
+        device = Device::kAtf1502as;
+    } else if (id == "0150403F") {
+        device = Device::kAtf1504as;
+    } else {
+        return Status("Unsupported ATF15xx IDCODE " + id);
     }
     if (action == "scan") {
+        std::cout << "Device: " << DeviceName(device) << '\n';
         return Status();
     }
-    status = connection.Command("BEGIN");
+    if (needs_file && jedec.device != device) {
+        return Status(std::string("JEDEC targets ") + DeviceName(jedec.device) +
+                      ", but connected device is " + DeviceName(device));
+    }
+    status = connection.Command("BEGIN " + id);
     if (!status.ok()) {
         return status;
     }
-    status = RunOperation(connection, action, image);
+    status = RunOperation(connection, action, device, image);
     // Attempt cleanup even on failure, preserving the original diagnostic. If
     // transport is lost, the firmware watchdog eventually releases the pins.
     Status cleanup = connection.Command("END");

@@ -119,6 +119,7 @@ Status ReadRecords(const std::string& text, std::vector<std::string>* output) {
 }
 
 struct JedecOptions {
+    Device device = Device::kUnknown;
     uint8_t default_fuse = 0;
     unsigned int checksum = 0;
 };
@@ -147,10 +148,13 @@ Status ReadOptions(const std::vector<std::string>& records,
             if (!status.ok()) {
                 return status;
             }
-            if (have_fuse_count || count != kFuseCount) {
-                return Status("Expected exactly one QF16808 (ATF1502AS)");
+            Device device = DeviceFromFuseCount(count);
+            if (have_fuse_count || device == Device::kUnknown) {
+                return Status(
+                    "Expected exactly one supported QF value (16808 or 34192)");
             }
             have_fuse_count = true;
+            output->device = device;
         } else if (r.rfind("F", 0) == 0) {
             if (have_default || (r != "F0" && r != "F1")) {
                 return Status("Invalid JEDEC default fuse");
@@ -197,7 +201,7 @@ Status ApplyFuseRecords(const std::vector<std::string>& records,
                         Fuses* output) {
     Status status;
     Fuses fuses = *output;
-    Fuses assigned{};
+    Fuses assigned(output->size(), 0);
     for (const auto& r : records) {
         if (!r.empty() && r[0] == 'L') {
             auto space = r.find_first_of(" \t\r\n", 1);
@@ -214,7 +218,7 @@ Status ApplyFuseRecords(const std::vector<std::string>& records,
                 if (std::isspace(static_cast<unsigned char>(r[i]))) {
                     continue;
                 }
-                if ((r[i] != '0' && r[i] != '1') || index >= kFuseCount) {
+                if ((r[i] != '0' && r[i] != '1') || index >= output->size()) {
                     return Status("Invalid or out-of-range L record");
                 }
                 if (assigned[index]) {
@@ -236,25 +240,31 @@ Status ApplyFuseRecords(const std::vector<std::string>& records,
 /**
  * @brief Checks the complete map before conversion or programming.
  *
+ * @param[in] device Device selected from the JEDEC fuse count.
  * @param[in] fuses Complete binary fuse map, including defaults.
  * @param[in] expected Expected 16-bit sum of the packed fuse bytes.
  * @return Success or a checksum, JTAG/security or reserved-fuse error.
  */
-Status ValidateFuses(const Fuses& fuses, unsigned int expected) {
+Status ValidateFuses(Device device, const Fuses& fuses, unsigned int expected) {
+    if (fuses.size() != FuseCount(device)) {
+        return Status("JEDEC fuse count does not match device");
+    }
     // JESD3 packs fuse zero into the least-significant bit of the first byte.
     unsigned int sum = 0;
-    for (unsigned int i = 0; i < kFuseCount; ++i) {
+    for (unsigned int i = 0; i < fuses.size(); ++i) {
         sum += static_cast<unsigned int>(fuses[i]) << (i % 8);
     }
     if ((sum & 0xffff) != expected) {
         return Status("JEDEC fuse checksum mismatch");
     }
     // Never disable JTAG or readback: both are required for subsequent access.
-    if (!fuses[16782] || !fuses[16783] || !fuses[16784] || !fuses[16785]) {
+    unsigned int jtag = JtagFuseStart(device);
+    if (!fuses[jtag] || !fuses[jtag + 1] || !fuses[jtag + 2] ||
+        !fuses[jtag + 3]) {
         return Status(
             "JTAG/security word must be 1111; locking is unsupported");
     }
-    for (unsigned int i = 16802; i < kFuseCount; ++i) {
+    for (unsigned int i = ReservedFuseStart(device); i < fuses.size(); ++i) {
         if (fuses[i]) {
             return Status("Reserved JEDEC fuses must be zero");
         }
@@ -267,7 +277,7 @@ Status ValidateFuses(const Fuses& fuses, unsigned int expected) {
 /**
  * @brief Validates the complete document before publishing its fuse map.
  */
-Status ParseJedec(const std::string& text, Fuses* output) {
+Status ParseJedec(const std::string& text, JedecFile* output) {
     std::vector<std::string> records;
     Status status = ReadRecords(text, &records);
     if (!status.ok()) {
@@ -279,59 +289,86 @@ Status ParseJedec(const std::string& text, Fuses* output) {
         return status;
     }
     // Build locally: failure must never expose a partially validated image.
-    Fuses fuses;
-    fuses.fill(options.default_fuse);
+    Fuses fuses(FuseCount(options.device), options.default_fuse);
     status = ApplyFuseRecords(records, &fuses);
     if (!status.ok()) {
         return status;
     }
-    status = ValidateFuses(fuses, options.checksum);
+    status = ValidateFuses(options.device, fuses, options.checksum);
     if (!status.ok()) {
         return status;
     }
-    *output = fuses;
+    JedecFile result;
+    result.device = options.device;
+    result.fuses = std::move(fuses);
+    *output = std::move(result);
     return Status();
 }
 
 /**
  * @brief Applies the Project Bureau permutation to the physical word map.
  */
-Image PackFuses(const Fuses& fuses) {
+Image PackFuses(Device device, const Fuses& fuses) {
     Image image;
     // Project Bureau maps the two logic banks, routing, configuration and UES.
     // The six trailing reserved JEDEC fuses have no physical coordinates.
-    for (unsigned int i = 0; i < 16802; ++i) {
+    for (unsigned int i = 0; i < ReservedFuseStart(device); ++i) {
         unsigned int row;
         unsigned int col;
-        if (i < 7680) {
-            row = 12 + i % 96;
-            col = 79 - i / 96;
-        } else if (i < 15360) {
-            row = 128 + (i - 7680) % 96;
-            col = 79 - (i - 7680) / 96;
-        } else if (i < 16320) {
-            row = (i - 15360) / 80;
-            col = 79 - (i - 15360) % 80;
-        } else if (i < 16720) {
-            row = 224 + (i - 16320) % 5;
-            col = 79 - (i - 16320) / 5;
-        } else if (i < 16750) {
-            row = 224 + (i - 16720) % 5;
-            col = 85 - (i - 16720) / 5;
-        } else if (i < 16782) {
-            row = 256;
-            col = 31 - (i - 16750);
-        } else if (i < 16786) {
-            row = 512;
-            col = 3 - (i - 16782);
+        if (device == Device::kAtf1502as) {
+            if (i < 7680) {
+                row = 12 + i % 96;
+                col = 79 - i / 96;
+            } else if (i < 15360) {
+                row = 128 + (i - 7680) % 96;
+                col = 79 - (i - 7680) / 96;
+            } else if (i < 16320) {
+                row = (i - 15360) / 80;
+                col = 79 - (i - 15360) % 80;
+            } else if (i < 16720) {
+                row = 224 + (i - 16320) % 5;
+                col = 79 - (i - 16320) / 5;
+            } else if (i < 16750) {
+                row = 224 + (i - 16720) % 5;
+                col = 85 - (i - 16720) / 5;
+            } else if (i < 16782) {
+                row = 256;
+                col = 31 - (i - 16750);
+            } else if (i < 16786) {
+                row = 512;
+                col = 3 - (i - 16782);
+            } else {
+                row = 768;
+                col = 15 - (i - 16786);
+            }
         } else {
-            row = 768;
-            col = 15 - (i - 16786);
+            if (i < 15360) {
+                row = 12 + i % 96;
+                col = 165 - i / 96;
+            } else if (i < 30720) {
+                row = 128 + (i - 15360) % 96;
+                col = 165 - (i - 15360) / 96;
+            } else if (i < 32640) {
+                row = (i - 30720) / 160;
+                col = 165 - (i - 30720) % 160;
+            } else if (i < 34134) {
+                row = 224 + (i - 32640) % 9;
+                col = 165 - (i - 32640) / 9;
+            } else if (i < 34166) {
+                row = 256;
+                col = 31 - (i - 34134);
+            } else if (i < 34170) {
+                row = 512;
+                col = 3 - (i - 34166);
+            } else {
+                row = 768;
+                col = 15 - (i - 34170);
+            }
         }
         auto& word = image[row];
         if (word.empty()) {
             // Padding cells remain erased, but unused wire bits must be zero.
-            unsigned int bits = WordBits(row);
+            unsigned int bits = WordBits(device, row);
             word.assign((bits + 7) / 8, 0xff);
             if (bits % 8) {
                 word.back() = static_cast<uint8_t>((1u << (bits % 8)) - 1);

@@ -1,6 +1,7 @@
 # Third-party attribution
 
-The ATF1502AS fuse permutation and programming algorithm are adapted from
+The ATF1502AS and ATF1504AS fuse permutations and programming algorithm are
+adapted from
 [Project Bureau](https://github.com/whitequark/prjbureau), an open-source reverse
 engineering project by whitequark. The relevant source snapshot is commit
 `8b8a97122ec238b6a09868a4bc7def20acef798c`:

@@ -305,7 +305,7 @@ Status Connection::Open(const std::string& port) {
         return status;
     }
     std::string expected =
-        "ATF1502 " + std::to_string(kProtocolVersion) + " v" + kVersion;
+        "ATF15XX " + std::to_string(kProtocolVersion) + " v" + kVersion;
     if (version != expected) {
         return Status("Incompatible programmer firmware: expected " + expected +
                       ", received " + version);

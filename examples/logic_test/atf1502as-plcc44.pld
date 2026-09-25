@@ -1,0 +1,36 @@
+/*
+ * ATF1502AS PLCC-44 combinational logic validation design.
+ *
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (c) 2026 ATF1502 programmer contributors
+ */
+
+Name     ATF1502AS_LOGIC_TEST;
+PartNo   00;
+Date     09/25/2026;
+Revision 01;
+Designer ATF150x programmer contributors;
+Company  None;
+Assembly None;
+Location None;
+Device   f1502ispplcc44;
+
+PROPERTY ATMEL {POWER_RESET = OFF};
+PROPERTY ATMEL {PIN_KEEP = ON};
+PROPERTY ATMEL {PREASSIGN = KEEP};
+
+/* Inputs shared by the two validation designs. */
+PIN 4 = A;
+PIN 5 = B;
+
+/* Outputs avoid the JTAG pins at 7, 13, 32, and 38. */
+PIN 36 = AND_OUT;
+PIN 37 = OR_OUT;
+PIN 39 = NAND_OUT;
+PIN 40 = NOR_OUT;
+
+AND_OUT = A & B;
+OR_OUT = A # B;
+NAND_OUT = !(A & B);
+NOR_OUT = !(A # B);
+

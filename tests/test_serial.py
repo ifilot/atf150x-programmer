@@ -14,25 +14,29 @@ import tempfile
 import threading
 
 exe = sys.argv[1]
-widths = {**{r: 86 for r in range(108)}, **{r: 86 for r in range(128, 229)}, 256: 32, 512: 4, 768: 16}
+widths1502 = {**{r: 86 for r in range(108)}, **{r: 86 for r in range(128, 229)}, 256: 32, 512: 4, 768: 16}
+widths1504 = {**{r: 166 for r in range(108)}, **{r: 166 for r in range(128, 233)}, 256: 32, 512: 4, 768: 16}
 
 ## @brief Builds the erased physical-word image used by the PTY model.
 # @return Mapping of row addresses to uppercase little-endian hex byte strings.
-def blank():
+def blank(widths):
     return {r: ((1 << n)-1).to_bytes((n+7)//8, 'little').hex().upper() for r, n in widths.items()}
 
 ## @brief Runs the real CLI against an isolated simulated serial programmer.
 # @param action CLI operation: flash, verify or erase.
 # @param jed Path to the JEDEC fixture; unused for erase.
 # @param fault Optional ID, CRC, sequence, blank-check or verify fault selector.
+# @param device Simulated device name selecting IDCODE and word geometry.
 # @return Tuple of process result, observed commands and final activation flag.
 # @details Owns a PTY pair and server thread, which are closed even on failure.
 # Model assertion failures are propagated after the server thread is joined.
-def run(action, jed, fault=None):
+def run(action, jed, fault=None, device='ATF1502AS'):
     master, slave = pty.openpty()
     port = os.ttyname(slave)
     commands, errors = [], []
-    memory = blank()
+    widths = widths1502 if device == 'ATF1502AS' else widths1504
+    idcode = '0150203F' if device == 'ATF1502AS' else '0150403F'
+    memory = blank(widths)
     stopped = threading.Event()
     activated = False
     staged_reads = set()
@@ -62,13 +66,15 @@ def run(action, jed, fault=None):
                     seq, cmd = body.decode().split(' ', 1)
                     commands.append(cmd)
                     result = 'OK'
-                    if cmd == 'HELLO': result += ' ATF1502 1 v0.1.0'
-                    elif cmd == 'ID': result += ' ' + ('0150403F' if fault == 'id' else '0150203F')
-                    elif cmd == 'BEGIN': active = True
+                    if cmd == 'HELLO': result += ' ATF15XX 2 v0.2.0'
+                    elif cmd == 'ID': result += ' ' + ('0150403F' if fault == 'id' else idcode)
+                    elif cmd.startswith('BEGIN '):
+                        assert cmd == 'BEGIN ' + idcode
+                        active = True
                     elif cmd == 'END': active = False
                     elif cmd == 'ERASE':
                         assert active
-                        memory.update(blank())
+                        memory.update(blank(widths))
                     elif cmd.startswith('WRITE '):
                         assert active
                         _, addr, hexdata = cmd.split()
@@ -128,7 +134,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert result.returncode != 0, fault
         assert not activated, fault
         if fault in ('id','crc','sequence'):
-            assert 'BEGIN' not in commands and 'ERASE' not in commands
+            assert not any(c.startswith('BEGIN ') for c in commands)
+            assert 'ERASE' not in commands
         if fault == 'blank': assert not any(c.startswith('WRITE') for c in commands)
         if fault == 'verify': assert commands[-1] == 'END'
     result, commands, activated = run('erase',jed)
@@ -137,6 +144,25 @@ with tempfile.TemporaryDirectory() as tmp:
     result, commands, activated = run('verify',jed)
     assert result.returncode != 0 and 'ERASE' not in commands
     assert not any(c.startswith('WRITE') for c in commands)
+    jed4 = pathlib.Path(tmp)/'test1504.jed'
+    f4 = [1]*34192
+    f4[34186:] = [0]*6
+    checksum4 = sum(bit << (i%8) for i, bit in enumerate(f4)) & 65535
+    jed4.write_bytes(('\x02test*QF34192*F1*L34186 000000'+f'*C{checksum4:04X}*\x030000').encode())
+    result, commands, activated = run('verify', jed4, device='ATF1504AS')
+    assert result.returncode == 0, result.stderr
+    assert sum(c.startswith('READ ') for c in commands) == 216
+    assert 'ERASE' not in commands
+    assert not any(c.startswith('WRITE ') for c in commands)
+    f4 = [0]*34192
+    f4[0] = 1
+    f4[34166:34170] = [1]*4
+    checksum4 = sum(bit << (i%8) for i, bit in enumerate(f4)) & 65535
+    jed4.write_bytes(('\x02test*QF34192*F0*L0 '+''.join(map(str,f4))+f'*C{checksum4:04X}*\x030000').encode())
+    result, commands, activated = run('flash', jed4, device='ATF1504AS')
+    assert result.returncode == 0, result.stderr
+    assert activated and commands[-1] == 'END'
+    assert sum(c.startswith('WRITE ') for c in commands) == 217
     # A malformed file must be rejected before the port is opened.
     jed.write_text('invalid')
     result = subprocess.run([exe,'flash',str(jed),'--port','nonexistent'],capture_output=True,text=True)

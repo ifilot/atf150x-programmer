@@ -3,12 +3,11 @@
 
 /**
  * @file
- * @brief Validated JEDEC input and ATF1502AS physical fuse-map interfaces.
+ * @brief Validated ATF1502AS/ATF1504AS JEDEC and fuse-map interfaces.
  */
 #ifndef ATF150X_PROGRAMMER_CLI_SRC_JEDEC_H_
 #define ATF150X_PROGRAMMER_CLI_SRC_JEDEC_H_
 
-#include <array>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -19,22 +18,28 @@
 
 namespace atf {
 
-using Fuses = std::array<uint8_t, kFuseCount>;
+using Fuses = std::vector<uint8_t>;
 // Packed bytes in JTAG shift order: least-significant byte and bit first.
 using Word = std::vector<uint8_t>;
 using Image = std::map<unsigned int, Word>;
 
+/** @brief Fully validated JEDEC data and its inferred target device. */
+struct JedecFile {
+    Device device = Device::kUnknown;
+    Fuses fuses;
+};
+
 /**
- * @brief Parses and validates an ATF1502AS JEDEC file.
+ * @brief Parses and validates an ATF1502AS or ATF1504AS JEDEC file.
  *
  * Accepts sparse fuse records and checks the complete resulting map. Rejects
  * unsupported fuse counts, locking options and nonzero reserved fuses.
  *
  * @param[in] text Complete file contents, preserving original line endings.
- * @param[out] fuses Non-null destination; unchanged on failure.
+ * @param[out] output Non-null destination; unchanged on failure.
  * @return Success or a framing, checksum, record or configuration error.
  */
-Status ParseJedec(const std::string& text, Fuses* fuses);
+Status ParseJedec(const std::string& text, JedecFile* output);
 
 /**
  * @brief Maps JEDEC fuse indices to physical Flash words.
@@ -42,10 +47,11 @@ Status ParseJedec(const std::string& text, Fuses* fuses);
  * The caller supplies validated binary values. Reserved JEDEC fuses are
  * omitted. Byte and bit zero shift first; unused wire bits are zero.
  *
- * @param[in] fuses Complete array of 16,808 binary fuse values.
- * @return The 212 mapped words, with unused physical cells set to one.
+ * @param[in] device Target device matching the fuse vector.
+ * @param[in] fuses Complete binary fuse vector.
+ * @return Mapped physical words, with unused physical cells set to one.
  */
-Image PackFuses(const Fuses& fuses);
+Image PackFuses(Device device, const Fuses& fuses);
 
 /**
  * @brief Encodes bytes as uppercase hexadecimal pairs.
