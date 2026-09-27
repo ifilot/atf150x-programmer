@@ -32,7 +32,7 @@ twenty `FF` bytes followed by `3F`; an erased JTAG word is `0F`.
 
 | Command | Payload after `OK` | Behavior |
 | --- | --- | --- |
-| `HELLO` | `ATF15XX 2 v0.2.0` | Reset the session and report protocol and firmware versions |
+| `HELLO` | `ATF15XX 2 v0.3.0` | Reset the session and report protocol and firmware versions |
 | `ID` | Eight hexadecimal digits | Reset the TAP, read IDCODE, and release pins |
 | `BEGIN <IDCODE>` | None | Require that exact supported IDCODE and enter programming mode |
 | `ERASE` | None | Erase the selected supported device; requires an active session |

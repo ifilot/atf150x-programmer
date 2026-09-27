@@ -3,13 +3,13 @@
 
 /**
  * @file
- * @brief CLI argument handling and erase, program, verify and activation flows.
+ * @brief CLI argument handling and console reporting for programmer flows.
  */
 #include <iostream>
-#include <sstream>
 #include <string>
 
 #include "cli/src/jedec.h"
+#include "cli/src/programmer.h"
 #include "cli/src/serial.h"
 #include "cli/src/status.h"
 #include "firmware/atf1502_programmer/protocol.h"
@@ -19,135 +19,31 @@ namespace atf {
 namespace {
 
 /**
- * @brief Formats a physical row address for the wire protocol.
+ * @brief Prints stage progress to stderr on a single rewritten line.
  *
- * @param[in] row Physical Flash row address.
- * @return Lowercase hexadecimal without a prefix or leading padding.
+ * Word-level stages update every 16 words and finish with a newline.
+ *
+ * @param[in] stage Current operation phase.
+ * @param[in] done Completed words within the stage.
+ * @param[in] total Total words within the stage.
  */
-std::string FormatAddress(unsigned int row) {
-    std::ostringstream text;
-    text << std::hex << row;
-    return text.str();
-}
-
-/**
- * @brief Compares every mapped bit, including padding and configuration.
- *
- * Reads the target without erasing or programming. Progress goes to stderr.
- *
- * @param[in,out] connection Open connection in an enabled programming session.
- * @param[in] image Expected row addresses and packed bytes.
- * @return Success or the first transport, decoding or readback error.
- */
-Status Verify(Connection& connection, const Image& image) {
-    unsigned int count = 0;
-    for (const auto& entry : image) {
-        std::string response;
-        Status status =
-            connection.Command("READ " + FormatAddress(entry.first), &response);
-        if (!status.ok()) {
-            return status;
+void PrintProgress(Stage stage, unsigned int done, unsigned int total) {
+    if (stage == Stage::kErasing || stage == Stage::kActivating) {
+        if (done == 0) {
+            std::cerr << StageName(stage) << "...\n";
         }
-        Word actual;
-        status = DecodeHex(response, &actual);
-        if (!status.ok()) {
-            return status;
-        }
-        if (actual != entry.second) {
-            return Status("Verify mismatch at row 0x" +
-                          FormatAddress(entry.first) + ": expected " +
-                          EncodeHex(entry.second) + ", read " +
-                          EncodeHex(actual));
-        }
-        if (++count % 16 == 0 || count == image.size()) {
-            std::cerr << "\rVerifying " << count << '/' << image.size()
-                      << std::flush;
-        }
+        return;
     }
-    std::cerr << '\n';
-    return Status();
-}
-
-/**
- * @brief Programs and verifies the staged image before final activation.
- *
- * The device must already be erased and blank-checked. Holds the arming bit
- * safe until all staged rows verify, then applies the requested final bit.
- * An error may leave a partial image; the caller must end the session.
- *
- * @param[in,out] connection Open connection with programming mode enabled.
- * @param[in] image Complete validated map, including the configuration word.
- * @return Success or the first programming/readback error.
- */
-Status ProgramImage(Connection& connection, const Image& image) {
-    Image staged = image;
-    // Both supported devices map their arming switch to row 0x100 bit 31.
-    staged.at(256)[3] |= 0x80;
-    unsigned int count = 0;
-    for (const auto& entry : staged) {
-        Status status =
-            connection.Command("WRITE " + FormatAddress(entry.first) + " " +
-                               EncodeHex(entry.second));
-        if (!status.ok()) {
-            return status;
-        }
-        if (++count % 16 == 0 || count == staged.size()) {
-            std::cerr << "\rProgramming " << count << '/' << staged.size()
-                      << std::flush;
-        }
+    if (done == 0) {
+        return;
     }
-    std::cerr << '\n';
-    Status status = Verify(connection, staged);
-    if (!status.ok()) {
-        return status;
+    if (done % 16 == 0 || done == total) {
+        std::cerr << '\r' << StageName(stage) << ' ' << done << '/' << total
+                  << std::flush;
     }
-    if (staged.at(256) != image.at(256)) {
-        // Programming only clears bits. Rewriting the configuration word
-        // changes just the arming bit; all other cells retain their verified
-        // values.
-        status = connection.Command("WRITE 100 " + EncodeHex(image.at(256)));
-        if (!status.ok()) {
-            return status;
-        }
-        Image config{{256, image.at(256)}};
-        return Verify(connection, config);
+    if (done == total) {
+        std::cerr << '\n';
     }
-    return Status();
-}
-
-/**
- * @brief Runs the requested operation within an enabled session.
- *
- * Erase and flash destroy the existing design. The caller always ends the
- * session, including on failure.
- *
- * @param[in,out] connection Open connection with programming mode enabled.
- * @param[in] action One of erase, flash or verify.
- * @param[in] device Device selected from the physical IDCODE.
- * @param[in] image Expected map; unused for erase.
- * @return Success or the first erase, blank-check, program or verify error.
- */
-Status RunOperation(Connection& connection, const std::string& action,
-                    Device device, const Image& image) {
-    if (action == "erase" || action == "flash") {
-        std::cerr << "Erasing...\n";
-        Status status = connection.Command("ERASE");
-        if (!status.ok()) {
-            return status;
-        }
-        Fuses erased_fuses(FuseCount(device), 1);
-        status = Verify(connection, PackFuses(device, erased_fuses));
-        if (!status.ok()) {
-            return status;
-        }
-    }
-    if (action == "flash") {
-        return ProgramImage(connection, image);
-    }
-    if (action == "verify") {
-        return Verify(connection, image);
-    }
-    return Status();
 }
 
 /**
@@ -241,12 +137,8 @@ Status Run(int argc, char** argv) {
         return status;
     }
     std::cout << "IDCODE: 0x" << id << '\n';
-    Device device = Device::kUnknown;
-    if (id == "0150203F") {
-        device = Device::kAtf1502as;
-    } else if (id == "0150403F") {
-        device = Device::kAtf1504as;
-    } else {
+    Device device = DeviceFromIdText(id);
+    if (device == Device::kUnknown) {
         return Status("Unsupported ATF15xx IDCODE " + id);
     }
     if (action == "scan") {
@@ -257,19 +149,12 @@ Status Run(int argc, char** argv) {
         return Status(std::string("JEDEC targets ") + DeviceName(jedec.device) +
                       ", but connected device is " + DeviceName(device));
     }
-    status = connection.Command("BEGIN " + id);
+    Operation operation = action == "erase"   ? Operation::kErase
+                          : action == "flash" ? Operation::kFlash
+                                              : Operation::kVerify;
+    status = RunSession(connection, operation, device, image, PrintProgress);
     if (!status.ok()) {
         return status;
-    }
-    status = RunOperation(connection, action, device, image);
-    // Attempt cleanup even on failure, preserving the original diagnostic. If
-    // transport is lost, the firmware watchdog eventually releases the pins.
-    Status cleanup = connection.Command("END");
-    if (!status.ok()) {
-        return status;
-    }
-    if (!cleanup.ok()) {
-        return cleanup;
     }
     std::cout << (action == "erase"   ? "Erase and blank check complete.\n"
                   : action == "flash" ? "Flash and verification complete.\n"

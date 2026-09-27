@@ -17,19 +17,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(atf_jedec cli/src/jedec.cc)
 target_include_directories(atf_jedec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-add_executable(atfprog cli/src/main.cc cli/src/serial.cc)
-target_link_libraries(atfprog PRIVATE atf_jedec)
+# Transport and programming flows shared by the CLI and the Qt GUI.
+add_library(atf_programmer cli/src/serial.cc cli/src/programmer.cc)
+target_link_libraries(atf_programmer PUBLIC atf_jedec)
+add_executable(atfprog cli/src/main.cc)
+target_link_libraries(atfprog PRIVATE atf_programmer)
 option(ATF_STATIC_RUNTIME "Statically link the atfprog runtime libraries" OFF)
 if(MINGW OR ATF_STATIC_RUNTIME)
   target_link_options(atfprog PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
-if(MSVC)
-  target_compile_options(atf_jedec PRIVATE /W4)
-  target_compile_options(atfprog PRIVATE /W4)
-else()
-  target_compile_options(atf_jedec PRIVATE -Wall -Wextra -Wpedantic -fno-exceptions)
-  target_compile_options(atfprog PRIVATE -Wall -Wextra -Wpedantic -fno-exceptions)
-endif()
+foreach(atf_target atf_jedec atf_programmer atfprog)
+  if(MSVC)
+    target_compile_options(${atf_target} PRIVATE /W4)
+  else()
+    target_compile_options(${atf_target} PRIVATE
+      -Wall -Wextra -Wpedantic -fno-exceptions)
+  endif()
+endforeach()
 install(TARGETS atfprog RUNTIME DESTINATION bin)
 include(CTest)
 if(BUILD_TESTING)
@@ -63,6 +67,11 @@ if(BUILD_TESTING)
   endif()
 endif()
 
+option(ATF_BUILD_GUI "Build the Qt 6 desktop application in gui/" OFF)
+if(ATF_BUILD_GUI)
+  add_subdirectory(gui)
+endif()
+
 # Formatting is opt-in locally; CI runs this target with clang-format 18.
 find_program(ATF_CLANG_FORMAT NAMES clang-format-18 clang-format)
 if(ATF_CLANG_FORMAT)
@@ -71,6 +80,9 @@ if(ATF_CLANG_FORMAT)
     "${CMAKE_CURRENT_SOURCE_DIR}/cli/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/src/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/src/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gui/tests/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/firmware/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/firmware/*.ino")
   add_custom_target(format-check

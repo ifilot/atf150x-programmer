@@ -84,6 +84,13 @@ private:
 };
 
 /**
+ * @brief Returns the HELLO payload of firmware matching this host build.
+ *
+ * @return Text such as "ATF15XX 2 v0.3.0".
+ */
+std::string ExpectedHello();
+
+/**
  * @brief Exchanges one CRC-protected command/reply pair at a time.
  *
  * Not thread-safe. Sequence numbers correlate replies, not duplicate
@@ -105,6 +112,19 @@ public:
      * @brief Disallows copy assignment of the connection.
      */
     Connection& operator=(const Connection&) = delete;
+
+    /**
+     * @brief Opens the port and performs an unchecked HELLO handshake.
+     *
+     * Front ends use this to report which firmware answered. No device is
+     * erased or programmed, and the reported version is not compared.
+     *
+     * @param[in] port COM port name on Windows or device path on Linux.
+     * @param[out] hello Non-null destination for the HELLO payload, such as
+     * "ATF15XX 2 v0.3.0"; unchanged on failure.
+     * @return Success or a transport/framing error.
+     */
+    Status Connect(const std::string& port, std::string* hello);
 
     /**
      * @brief Opens the port and validates the firmware protocol handshake.

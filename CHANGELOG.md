@@ -8,6 +8,24 @@ ship with the same version.
 
 ## [Unreleased]
 
+### Added
+
+- ATF150x Programmer, a Qt 6 desktop application for Windows with automatic
+  Arduino Leonardo detection, firmware version checking and installation of
+  the bundled firmware through AVRDUDE, identify, program, verify and erase
+  with progress reporting, and GitHub release notifications.
+- A fuse map that draws every physical Flash cell of a JEDEC file, colored by
+  function using Project Bureau's fuse database, with per-cell descriptions
+  and usage statistics.
+- A Windows installer and portable package built and smoke-tested in CI and
+  attached to releases.
+
+### Changed
+
+- The erase, program, verify and activation flow moved from the CLI into a
+  shared library used by both `atfprog` and the GUI. CLI behavior is
+  unchanged apart from a separate "Blank checking" progress line.
+
 ## [0.2.0] - 2026-09-25
 
 ### Added

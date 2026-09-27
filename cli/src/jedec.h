@@ -42,6 +42,22 @@ struct JedecFile {
 Status ParseJedec(const std::string& text, JedecFile* output);
 
 /**
+ * @brief Locates one JEDEC fuse in the physical Flash word map.
+ *
+ * Uses the same permutation as PackFuses(). Reserved JEDEC fuses and indices
+ * beyond the device's fuse count have no physical cell.
+ *
+ * @param[in] device Supported device selector.
+ * @param[in] fuse JEDEC fuse index.
+ * @param[out] row Non-null physical row address; unchanged on failure.
+ * @param[out] column Non-null bit within that row's word, where bit zero
+ * shifts first; unchanged on failure.
+ * @return True when the fuse has a physical cell.
+ */
+bool FuseLocation(Device device, unsigned int fuse, unsigned int* row,
+                  unsigned int* column);
+
+/**
  * @brief Maps JEDEC fuse indices to physical Flash words.
  *
  * The caller supplies validated binary values. Reserved JEDEC fuses are

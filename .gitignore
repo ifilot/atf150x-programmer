@@ -27,4 +27,5 @@ desktop.ini
 
 # Software build outputs
 /build*/
+/dist/
 __pycache__/

@@ -133,7 +133,7 @@ void ExpectReleased() {
 int main() {
     setup();
     ExpectReleased();
-    ExpectResponse("HELLO", "OK ATF15XX 2 v0.2.0");
+    ExpectResponse("HELLO", "OK ATF15XX 2 v0.3.0");
     ExpectResponse("ID", "OK 0150203F");
     ExpectReleased();
     ExpectResponse("ERASE", "ERR SESSION");

@@ -92,6 +92,8 @@ jobs:
   firmware:
     name: Arduino Leonardo firmware
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -128,6 +130,91 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  windows-gui:
+    name: Windows GUI and installer
+    needs: firmware
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      TAG: ${{ needs.firmware.outputs.tag }}
+    steps:
+      - name: Preserve LF line endings
+        shell: bash
+        run: git config --global core.autocrlf input
+
+      - uses: actions/checkout@v4
+
+      - name: Download the tested firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: atf1502-leonardo-firmware-${{ needs.firmware.outputs.tag }}
+          path: ci-input/firmware
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-serialport
+            mingw-w64-x86_64-qt6-tools
+            file
+
+      - name: Ensure Inno Setup 6
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build, test and package
+        run: |
+          gui/packaging/build-dist.sh \
+            --firmware ci-input/firmware/atf1502_programmer.ino.hex \
+            --package --installer
+
+      - name: Smoke-test the installer
+        run: |
+          installer="dist/atf150x-programmer-${TAG}-windows-x86_64-setup.exe"
+          install_dir="$PWD/build-installer-smoke"
+          MSYS2_ARG_CONV_EXCL='*' "$installer" /VERYSILENT \
+            /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=$(cygpath -w "$install_dir")"
+          for file in atf150x-programmer.exe atfprog.exe Qt6Core.dll \
+              styles/qmodernwindowsstyle.dll tools/avrdude/avrdude.exe \
+              firmware/atf150x-leonardo-firmware.hex; do
+            cmake -E compare_files "dist/atf150x-programmer/$file" \
+              "$install_dir/$file"
+          done
+          cmake -E compare_files \
+            ci-input/firmware/atf1502_programmer.ino.hex \
+            "$install_dir/firmware/atf150x-leonardo-firmware.hex"
+          "$install_dir/atfprog.exe" --version | grep -Fx "atfprog ${TAG}"
+          uninstaller=$(find "$install_dir" -maxdepth 1 -iname 'unins*.exe' -print -quit)
+          test -n "$uninstaller"
+          MSYS2_ARG_CONV_EXCL='*' "$uninstaller" /VERYSILENT \
+            /SUPPRESSMSGBOXES /NORESTART
+          # The uninstaller finishes asynchronously.
+          for attempt in $(seq 30); do
+            test -e "$install_dir/atf150x-programmer.exe" || break
+            sleep 1
+          done
+          test ! -e "$install_dir/atf150x-programmer.exe"
+
+      - name: Upload GUI package and installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: atf150x-programmer-${{ needs.firmware.outputs.tag }}-windows-x86_64-gui
+          path: |
+            dist/atf150x-programmer-${{ needs.firmware.outputs.tag }}-windows-x86_64.zip
+            dist/atf150x-programmer-${{ needs.firmware.outputs.tag }}-windows-x86_64-setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
   style:
     name: Style
     runs-on: ubuntu-24.04
@@ -149,6 +236,7 @@ jobs:
     needs:
       - linux-cli
       - windows-cli
+      - windows-gui
       - firmware
       - style
     runs-on: ubuntu-24.04
@@ -183,6 +271,12 @@ jobs:
           name: atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}
           path: release/atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}
 
+      - name: Download Windows GUI
+        uses: actions/download-artifact@v4
+        with:
+          name: atf150x-programmer-${{ steps.version.outputs.tag }}-windows-x86_64-gui
+          path: release
+
       - name: Create release archives
         working-directory: release
         run: |
@@ -192,14 +286,14 @@ jobs:
             "atfprog-${{ steps.version.outputs.tag }}-windows-x86_64"
           zip -qr "atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}.zip" \
             "atf1502-leonardo-firmware-${{ steps.version.outputs.tag }}"
-          sha256sum *.tar.gz *.zip > SHA256SUMS
+          sha256sum *.tar.gz *.zip *.exe > SHA256SUMS
 
       - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            release/*.tar.gz release/*.zip release/SHA256SUMS \
+            release/*.tar.gz release/*.zip release/*.exe release/SHA256SUMS \
             --draft \
             --generate-notes \
             --title "$GITHUB_REF_NAME" \

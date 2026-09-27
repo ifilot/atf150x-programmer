@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "cli/src/jedec.h"
 #include "firmware/atf1502_programmer/jtag.h"
@@ -170,6 +172,26 @@ int main() {
         }
     }
     ATF_CHECK(cell_count == 16802);
+    // FuseLocation is the injective permutation used by PackFuses.
+    for (auto device : {atf::Device::kAtf1502as, atf::Device::kAtf1504as}) {
+        std::set<std::pair<unsigned int, unsigned int>> cells;
+        for (unsigned int i = 0; i < atf::FuseCount(device); ++i) {
+            unsigned int row = 0;
+            unsigned int col = 0;
+            bool mapped = atf::FuseLocation(device, i, &row, &col);
+            ATF_CHECK(mapped == (i < atf::ReservedFuseStart(device)));
+            if (mapped) {
+                ATF_CHECK(col < atf::WordBits(device, row));
+                ATF_CHECK(cells.insert({row, col}).second);
+            }
+        }
+        ATF_CHECK(cells.size() == atf::ReservedFuseStart(device));
+    }
+    unsigned int location_row = 0;
+    unsigned int location_col = 0;
+    ATF_CHECK(atf::FuseLocation(atf::Device::kAtf1502as, 16750, &location_row,
+                                &location_col));
+    ATF_CHECK(location_row == 256 && location_col == 31);
     auto replace = [&](const std::string& from, const std::string& to) {
         auto s = text;
         s.replace(s.find(from), from.size(), to);

@@ -66,7 +66,7 @@ def run(action, jed, fault=None, device='ATF1502AS'):
                     seq, cmd = body.decode().split(' ', 1)
                     commands.append(cmd)
                     result = 'OK'
-                    if cmd == 'HELLO': result += ' ATF15XX 2 v0.2.0'
+                    if cmd == 'HELLO': result += ' ATF15XX 2 v0.3.0'
                     elif cmd == 'ID': result += ' ' + ('0150403F' if fault == 'id' else idcode)
                     elif cmd.startswith('BEGIN '):
                         assert cmd == 'BEGIN ' + idcode

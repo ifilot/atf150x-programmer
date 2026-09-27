@@ -306,64 +306,83 @@ Status ParseJedec(const std::string& text, JedecFile* output) {
 }
 
 /**
- * @brief Applies the Project Bureau permutation to the physical word map.
+ * @brief Applies the Project Bureau permutation to one JEDEC fuse index.
+ */
+bool FuseLocation(Device device, unsigned int fuse, unsigned int* row,
+                  unsigned int* column) {
+    // Project Bureau maps the two logic banks, routing, configuration and UES.
+    // The six trailing reserved JEDEC fuses have no physical coordinates.
+    if (fuse >= ReservedFuseStart(device)) {
+        return false;
+    }
+    unsigned int i = fuse;
+    unsigned int r;
+    unsigned int c;
+    if (device == Device::kAtf1502as) {
+        if (i < 7680) {
+            r = 12 + i % 96;
+            c = 79 - i / 96;
+        } else if (i < 15360) {
+            r = 128 + (i - 7680) % 96;
+            c = 79 - (i - 7680) / 96;
+        } else if (i < 16320) {
+            r = (i - 15360) / 80;
+            c = 79 - (i - 15360) % 80;
+        } else if (i < 16720) {
+            r = 224 + (i - 16320) % 5;
+            c = 79 - (i - 16320) / 5;
+        } else if (i < 16750) {
+            r = 224 + (i - 16720) % 5;
+            c = 85 - (i - 16720) / 5;
+        } else if (i < 16782) {
+            r = 256;
+            c = 31 - (i - 16750);
+        } else if (i < 16786) {
+            r = 512;
+            c = 3 - (i - 16782);
+        } else {
+            r = 768;
+            c = 15 - (i - 16786);
+        }
+    } else {
+        if (i < 15360) {
+            r = 12 + i % 96;
+            c = 165 - i / 96;
+        } else if (i < 30720) {
+            r = 128 + (i - 15360) % 96;
+            c = 165 - (i - 15360) / 96;
+        } else if (i < 32640) {
+            r = (i - 30720) / 160;
+            c = 165 - (i - 30720) % 160;
+        } else if (i < 34134) {
+            r = 224 + (i - 32640) % 9;
+            c = 165 - (i - 32640) / 9;
+        } else if (i < 34166) {
+            r = 256;
+            c = 31 - (i - 34134);
+        } else if (i < 34170) {
+            r = 512;
+            c = 3 - (i - 34166);
+        } else {
+            r = 768;
+            c = 15 - (i - 34170);
+        }
+    }
+    *row = r;
+    *column = c;
+    return true;
+}
+
+/**
+ * @brief Places every mapped fuse at its Project Bureau coordinates.
  */
 Image PackFuses(Device device, const Fuses& fuses) {
     Image image;
-    // Project Bureau maps the two logic banks, routing, configuration and UES.
-    // The six trailing reserved JEDEC fuses have no physical coordinates.
     for (unsigned int i = 0; i < ReservedFuseStart(device); ++i) {
         unsigned int row;
         unsigned int col;
-        if (device == Device::kAtf1502as) {
-            if (i < 7680) {
-                row = 12 + i % 96;
-                col = 79 - i / 96;
-            } else if (i < 15360) {
-                row = 128 + (i - 7680) % 96;
-                col = 79 - (i - 7680) / 96;
-            } else if (i < 16320) {
-                row = (i - 15360) / 80;
-                col = 79 - (i - 15360) % 80;
-            } else if (i < 16720) {
-                row = 224 + (i - 16320) % 5;
-                col = 79 - (i - 16320) / 5;
-            } else if (i < 16750) {
-                row = 224 + (i - 16720) % 5;
-                col = 85 - (i - 16720) / 5;
-            } else if (i < 16782) {
-                row = 256;
-                col = 31 - (i - 16750);
-            } else if (i < 16786) {
-                row = 512;
-                col = 3 - (i - 16782);
-            } else {
-                row = 768;
-                col = 15 - (i - 16786);
-            }
-        } else {
-            if (i < 15360) {
-                row = 12 + i % 96;
-                col = 165 - i / 96;
-            } else if (i < 30720) {
-                row = 128 + (i - 15360) % 96;
-                col = 165 - (i - 15360) / 96;
-            } else if (i < 32640) {
-                row = (i - 30720) / 160;
-                col = 165 - (i - 30720) % 160;
-            } else if (i < 34134) {
-                row = 224 + (i - 32640) % 9;
-                col = 165 - (i - 32640) / 9;
-            } else if (i < 34166) {
-                row = 256;
-                col = 31 - (i - 34134);
-            } else if (i < 34170) {
-                row = 512;
-                col = 3 - (i - 34166);
-            } else {
-                row = 768;
-                col = 15 - (i - 34170);
-            }
+        if (!FuseLocation(device, i, &row, &col)) {
+            continue;
         }
         auto& word = image[row];
         if (word.empty()) {

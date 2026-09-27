@@ -292,9 +292,16 @@ Status Serial::ReadLine(std::string* output) {
 }
 
 /**
- * @brief Establishes a transport and checks the HELLO response.
+ * @brief Formats the protocol and release versions compiled into the host.
  */
-Status Connection::Open(const std::string& port) {
+std::string ExpectedHello() {
+    return "ATF15XX " + std::to_string(kProtocolVersion) + " v" + kVersion;
+}
+
+/**
+ * @brief Establishes a transport and returns the raw HELLO payload.
+ */
+Status Connection::Connect(const std::string& port, std::string* hello) {
     Status status = serial_.Open(port);
     if (!status.ok()) {
         return status;
@@ -304,8 +311,20 @@ Status Connection::Open(const std::string& port) {
     if (!status.ok()) {
         return status;
     }
-    std::string expected =
-        "ATF15XX " + std::to_string(kProtocolVersion) + " v" + kVersion;
+    *hello = std::move(version);
+    return Status();
+}
+
+/**
+ * @brief Establishes a transport and checks the HELLO response.
+ */
+Status Connection::Open(const std::string& port) {
+    std::string version;
+    Status status = Connect(port, &version);
+    if (!status.ok()) {
+        return status;
+    }
+    std::string expected = ExpectedHello();
     if (version != expected) {
         return Status("Incompatible programmer firmware: expected " + expected +
                       ", received " + version);
