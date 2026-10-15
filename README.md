@@ -19,17 +19,38 @@ serial library. Logic synthesis and JEDEC generation remain separate steps.
 
 ## Download
 
-[Download the Windows installer, the Windows and Linux CLI, and the Arduino
-Leonardo firmware from GitHub
-Releases.](https://github.com/ifilot/atf150x-programmer/releases) Release
-packages include documentation, the GPLv3 license, and SHA-256 checksums.
+| Package | v0.3.0 download |
+| --- | --- |
+| ATF150x Programmer GUI, Windows installer | [atf150x-programmer-v0.3.0-windows-x86_64-setup.exe](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atf150x-programmer-v0.3.0-windows-x86_64-setup.exe) |
+| ATF150x Programmer GUI, Windows portable | [atf150x-programmer-v0.3.0-windows-x86_64.zip](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atf150x-programmer-v0.3.0-windows-x86_64.zip) |
+| `atfprog` CLI, Windows | [atfprog-v0.3.0-windows-x86_64.zip](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atfprog-v0.3.0-windows-x86_64.zip) |
+| `atfprog` CLI, Linux | [atfprog-v0.3.0-linux-x86_64.tar.gz](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atfprog-v0.3.0-linux-x86_64.tar.gz) |
+| Arduino Leonardo firmware | [atf1502-leonardo-firmware-v0.3.0.zip](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atf1502-leonardo-firmware-v0.3.0.zip) |
+
+Newer versions and SHA-256 checksums are on the [latest release
+page](https://github.com/ifilot/atf150x-programmer/releases/latest). Release
+packages include documentation and the GPLv3 license.
 
 ## Desktop application (Windows)
 
-`atf150x-programmer-vX.Y.Z-windows-x86_64-setup.exe` installs **ATF150x
-Programmer**, a graphical front end with the same parser, safeguards and
-programming algorithm as the CLI. A portable zip with the same contents is
-also published.
+[`atf150x-programmer-v0.3.0-windows-x86_64-setup.exe`](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atf150x-programmer-v0.3.0-windows-x86_64-setup.exe)
+installs **ATF150x Programmer**, a graphical front end with the same parser,
+safeguards and programming algorithm as the CLI. A [portable
+zip](https://github.com/ifilot/atf150x-programmer/releases/download/v0.3.0/atf150x-programmer-v0.3.0-windows-x86_64.zip)
+with the same contents is also published.
+
+![ATF150x Programmer showing the fuse map of the ATF1504AS logic-test design](docs/images/gui-fusemap-atf1504as.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/gui-fusemap-atf1502as.png" alt="Fuse map of the ATF1502AS logic-test design"></td>
+    <td width="50%"><img src="docs/images/gui-fusemap-zoom.png" alt="Zoomed fuse map with the hovered cell described below the map"></td>
+  </tr>
+  <tr>
+    <td>ATF1502AS logic test, fitted to the window.</td>
+    <td>Zoomed in; the hovered cell is identified below the map.</td>
+  </tr>
+</table>
 
 - **Automatic programmer detection.** The application finds the Arduino
   Leonardo by its USB identity (Arduino LLC `2341` or Arduino SRL `2A03`,
