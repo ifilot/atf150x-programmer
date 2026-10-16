@@ -8,6 +8,8 @@ ship with the same version.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
 ### Added
 
 - ATF150x Programmer, a Qt 6 desktop application for Windows with automatic
@@ -57,6 +59,7 @@ ship with the same version.
 - Physical validation using an Arduino Leonardo and ATF1502AS, including
   verification after a power cycle.
 
-[Unreleased]: https://github.com/ifilot/atf150x-programmer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ifilot/atf150x-programmer/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ifilot/atf150x-programmer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ifilot/atf150x-programmer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ifilot/atf150x-programmer/releases/tag/v0.1.0
